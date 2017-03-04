@@ -27,21 +27,21 @@ You'll need to configure following things before using this utility by modifying
 ## Usage:
 
 ###### 1. Install
-After doing 'configure' and 'make' instead of doing 'make install', run pkgmgr as 'pkgmgr install <package name>' as root (or using sudo). If the command to install the package is not 'make install' or has some variation to 'make install' e.g. 'make PREFIX=/usr install' you should run \"pkgmgr install <package name> 1 '' <install command>\" 
+After doing `configure` and `make` instead of doing `make install`, run pkgmgr as `pkgmgr install <package name>` as root (or using sudo). If the command to install the package is not `make install` or has some variation to `make install` e.g. `make PREFIX=/usr install` you should run `pkgmgr install <package name> 1 '' <install command>` 
 
 ###### 2. List packages
-To list the packages that currently pkgmgr knows of use 'pkgmgr list' 
+To list the packages that currently pkgmgr knows of use `pkgmgr list` 
 
 ###### 3. List files of a package
-To list the files installed by a package, use 'pkgmgr listfiles <package name>'
+To list the files installed by a package, use `pkgmgr listfiles <package name>`
 
 ###### 4. To remove a package
-pkgmgr remove <package name>
+`pkgmgr remove <package name>`
 
 To remove a package permanently:
-pkgmgr premove <package name>
+`pkgmgr premove <package name>`
 
 ## For the techies:
 
-btrfs has snapshot feature and has facility to list the files created between two marker files in the snapshot. So, this utility creates a starting marker, create thes snapshot/subvolume, installs the package using the provided command (or 'make install' by default) and then does 'subvolume find-new' to get the list of files installed by the 'make install' command. Creates an archives from the file list and extracts it in '/'. It also keeps a INSTALL.log file with the package files containing the details. It keeps the name of the package in flat file under 'metadata' directory.
+btrfs has snapshot feature and has facility to list the files created between two marker files in the snapshot. So, this utility creates a starting marker, create thes snapshot/subvolume, installs the package using the provided command (or `make install` by default) and then does `subvolume find-new` to get the list of files installed by the `make install` command. Creates an archives from the file list and extracts it in '/'. It also keeps a INSTALL.log file with the package files containing the details. It keeps the name of the package in flat file under 'metadata' directory.
 
