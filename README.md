@@ -18,6 +18,7 @@ This is a package manager for system built using Linux From Scratch. It is based
 How and what to configure:
 
 You'll need to configure following things before using this utility by modifying the /etc/pkgmgr.conf file.
+
 1. BTRFS_SNAPDIR: Where btrfs will create snapshots
 2. BTRFS_ROOT_SUBVOLID: Your root's subvolume id.
 3. BTRFS_DEVICE: Which device represents your '/' partition. e.g. /dev/sda2
@@ -26,7 +27,7 @@ You'll need to configure following things before using this utility by modifying
 ## Usage:
 
 ###### 1. Install
-After doing 'configure' and 'make' instead of doing 'make install', run pkgmgr as 'pkgmgr install <package name>' as root (or using sudo). If the command to install the package is not 'make install' or has some variation to 'make install' you can specify it as "pkgmgr install <package name> 1 '' <install command>" 
+After doing 'configure' and 'make' instead of doing 'make install', run pkgmgr as 'pkgmgr install <package name>' as root (or using sudo). If the command to install the package is not 'make install' or has some variation to 'make install' e.g. 'make PREFIX=/usr install' you should run \"pkgmgr install <package name> 1 '' <install command>\" 
 
 ###### 2. List packages
 To list the packages that currently pkgmgr knows of use 'pkgmgr list' 
