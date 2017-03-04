@@ -43,12 +43,13 @@ To remove a package permanently:
 
 ## Examples
 To install PyGTK-2.24.0, 
+
 1. Extract the tarball
 2. (Optional) Apply any patches that are required for this package.
-3. cd pygtk-2.24.0 
-4. ./configure --prefix=/usr
-5. make
-6. sudo pkgmgr install pygtk-2.24.0
+3. `cd pygtk-2.24.0`
+4. `./configure --prefix=/usr`
+5. `make`
+6. `sudo pkgmgr install pygtk-2.24.0`
 
 ## For the techies:
 
