@@ -41,6 +41,15 @@ pkgmgr remove <package name>
 To remove a package permanently:
 pkgmgr premove <package name>
 
+## Examples
+To install PyGTK-2.24.0, 
+1. Extract the tarball
+2. (Optional) Apply any patches that are required for this package.
+3. cd pygtk-2.24.0 
+4. ./configure --prefix=/usr
+5. make
+6. sudo pkgmgr install pygtk-2.24.0
+
 ## For the techies:
 
 btrfs has snapshot feature and has facility to list the files created between two marker files in the snapshot. So, this utility creates a starting marker, create thes snapshot/subvolume, installs the package using the provided command (or 'make install' by default) and then does 'subvolume find-new' to get the list of files installed by the 'make install' command. Creates an archives from the file list and extracts it in '/'. It also keeps a INSTALL.log file with the package files containing the details. It keeps the name of the package in flat file under 'metadata' directory.
