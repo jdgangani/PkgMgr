@@ -14,7 +14,7 @@ Prerequisite:
 2. btrfstools are installed i.e. btrfs command is available.
 
 How and what to configure:
-You'll need to configure following things before using this utility by modifying the /etc/pkgmgr.conf file.
+You'll need to configure following things before using this utility by modifying the /etc/pkgmgr.conf file.:
 1. BTRFS_SNAPDIR: Where btrfs will create snapshots
 2. BTRFS_ROOT_SUBVOLID: Your root's subvolume id.
 3. BTRFS_DEVICE: Which device represents your '/' partition. e.g. /dev/sda2
