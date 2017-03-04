@@ -41,7 +41,7 @@ To list the files installed by a package, use `pkgmgr listfiles <package name>`
 To remove a package permanently:
 `pkgmgr premove <package name>`
 
-## Examples
+## Example
 To install PyGTK-2.24.0, 
 
 1. Extract the tarball
