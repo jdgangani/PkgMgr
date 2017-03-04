@@ -15,7 +15,7 @@ This is a package manager for system built using Linux From Scratch. It is based
 1. / formatted with btrfs
 2. btrfstools are installed i.e. btrfs command is available.
 
-How and what to configure:
+######How and what to configure:
 
 You'll need to configure following things before using this utility by modifying the /etc/pkgmgr.conf file.
 
