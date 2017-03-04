@@ -1,0 +1,329 @@
+#!/bin/bash
+
+##################################################
+##						##
+## Script to manage packages on LFS system	##
+## 	     	    	     	    		##
+##################################################
+
+ME=${0##*/}
+
+DEF_CONF_FILE="/etc/pkgmgr.conf"
+
+CONF_FILE=$DEF_CONF_FILE
+# Error codes
+E_INVALIDACT=1
+E_INVALIDKEEP=2
+E_INVALIDPKGNAME=3
+VALIDACTIONS="install,list,listfiles,remove,premove,"
+
+if ! . $CONF_FILE; then
+    echo "Error: Unable to source $CONF_FILE"
+    exit 1
+fi
+
+NOOFARGS=$#
+action=$1
+shift
+pkgname=$1
+shift
+postinst_cmd=$1
+shift
+install_cmd=$(echo $*)
+
+checkretval() {
+    local rval=$1
+    local action=$2
+
+    if [ $rval -eq $ERROR ]; then
+	echo -e "\\033[1;31mERROR: $action failed.\\033[0;39m"
+    fi
+}
+
+cleanup() {
+    rm -f $LOCKFILE
+    rm -f /root/$START_TRANS
+    rm -f /root/$END_TRANS
+}
+
+log_msg() {
+    local msg=$1
+    if [ "x$verbose" != "x" ] && [ $verbose -eq 1 ]; then
+        echo "$msg"
+    fi
+    logger -p local7.debug -t "$ME[$$]" "$msg"
+}
+
+quit() {
+    local retval=$1
+    cleanup
+    log_msg "END"
+    exit $retval
+}
+
+printwarn() {
+    local msg=$1
+    echo -e "\\033[1;33m$msg"
+    echo -e -n "\\033[0;39m"
+}
+    
+printerror() {
+    local msg=$1
+    echo -e "\\033[1;33m$msg"
+    echo -e -n "\\033[0;39m"
+}
+
+usage() {
+    echo -n "Usage: $ME action [package name] [keepfiles]"
+    echo " [install command]"
+    echo "          action: can be one of $VALIDACTIONS"
+    echo -n "          keepfiles: Will not remove temporary files."
+    echo "Usefull for debugging. Can be 0 for no and 1 for keep."
+    echo -n "          install command: If you do not want to use"
+    echo "default install command '$DEF_INSTALL_CMD'"
+    echo
+}
+
+checkexist() {
+    local pkgname=$1
+    if ! `grep -q -i "$pkgname"  "$PKG_LIST_FILE"`; then
+        return $ERROR
+    fi
+    return $SUCCESS
+}
+
+validate() {
+    if ! $(echo "$VALIDACTIONS" | grep -q -i "$action,") ; then
+	return $E_INVALIDACT
+    fi
+
+    if [ "x$action" != "xlist" ] && [ "x$action" != "xlistfiles" ]; then
+	if [ -s "$keepfiles" ]; then
+	    if [ $keepfiles -eq 0 ] || [ $keepfiles -eq 1 ]; then
+		return $E_INVALIDKEEP
+	    fi
+	fi
+    fi
+
+    if [ "x$action" = "xlistfiles" ]; then
+	if [ "x$pkgname" = "x" ]; then
+	    echo "Please provide package name to list its files."
+	    return $E_INVALIDPKGNAME
+	fi
+	checkexist $pkgname
+	retval=$?
+	if [ $retval -eq $ERROR ]; then
+	    return $E_INVALIDPKGNAME
+	fi
+    fi
+
+    return $SUCCESS
+}
+
+verifypackage() {
+	local pkgname=$1
+
+	if [ ! -f "$PKG_DIR/$pkgname/$PKG_FILELIST" ]; then
+		echo "$pkgname: No such package in database."
+		return $ERROR
+	fi
+
+	echo "Verifying package files..."
+	totalfilecount=`wc -l "$PKG_DIR/$pkgname/$PKG_FILELIST" | awk '{print $1}'`
+	count=0
+	echo -n "Completed  000 %"
+	missingfiles=0
+	while read fname; do
+		filename="/$filename"
+		if [[ ! -f "$filename" || ! -d "$filename" ]]; then
+			missingfiles=$((missingfiles + 1))
+		fi
+		count=$((count + 1))
+		percent=$((count * 100 / $totalfilecount))
+		echo -n -e "\b\b\b\b\b$percent %"
+	done < "$PKG_DIR/$pkgname/$PKG_FILELIST"
+}
+
+dolist() {
+    cat "$PKG_LIST_FILE" 
+}
+
+listfiles() {
+    local pkgname=$1
+    cat "$PKG_DIR/$pkgname/$PKG_FILELIST" 
+}
+
+doinstall() {
+    local pkgname=$1
+
+    if [ "x$install_cmd" = "x" ]; then
+	install_cmd=$DEF_INSTALL_CMD
+    fi
+    #
+    # Do a fsync first so that no stray files will
+    # get listed in our find-new
+    #
+    echo -n "Preparing..."
+    OLD_DIR=`pwd`
+    log_msg "ACTION: Initial Fsync"
+    $FSYNC_CMD 2>&1 > $TEMPDIR/INSTALL.log
+    cd $BTRFS_SNAPDIR
+    log_msg "ACTION: Creating snapshot."
+    snapshot_name=snap_`date "+%Y%m%d"`_$pkgname
+    $SNAPSHOT_CMD / $snapshot_name >> $TEMPDIR/INSTALL.log
+    echo "Done"
+    echo -n "Installing $pkgname with install command '$install_cmd'..."
+    log_msg "ACTION: Creating transaction start file."
+    echo `date` > /root/$START_TRANS
+    log_msg "ACTION: Doing make install"
+    cd $OLD_DIR
+    $install_cmd >> $TEMPDIR/INSTALL.log 2>&1
+    retval=$?
+    if [ $retval != $SUCCESS ]; then
+	cd $BTRFS_SNAPDIR
+	$DELSNAPSHOT_CMD $snapshot_name
+	printerror "ERROR: Unable to install $pkgname."
+       exit $ERROR
+    fi
+    echo "Done."
+    echo `date` > /root/$END_TRANS
+    echo -n "Adding package in database..."
+    cd $BTRFS_ROOT
+    log_msg "ACTION: Sync before listgen"
+    $FSYNC_CMD >> $TEMPDIR/INSTALL.log 
+    last_gen_id=`$LAST_GEN_CMD | grep -v '^inode' | tail -1 | awk '{print $4}'`
+    log_msg "ACTION: Trying $last_gen_id for transaction start."
+    $FIND_NEW_CMD $last_gen_id > $LAST_GEN_FILE 
+    while ! grep $START_TRANS $LAST_GEN_FILE >/dev/null 2>&1; do
+	last_gen_id=$((last_gen_id-1))
+	log_msg "ACTION: Trying $last_gen_id for transaction start."
+	$FIND_NEW_CMD $last_gen_id > $LAST_GEN_FILE 
+    done
+    log_msg "ACTION: Using $last_gen_id as transaction id." 
+    cat $LAST_GEN_FILE | grep -v 'sources\|var\/log\|tmp\|root' | grep '^inode' | awk '{print $17}' | sort | uniq > $TEMPDIR/$PKG_FILELIST
+    #
+    # Some packages eg. ruby creates file/dir names with special chars. Escape them, otherwise tar will fail.
+    #
+    #sed -i -e 's@\(@\\\(@g' -e 's@\)@\\\)@g' $TEMPDIR/$PKG_LIST_FILE 
+    log_msg "ACTION: Adding packge entry in file $PKG_LIST_FILE"
+    echo "$pkgname" >> "$PKG_LIST_FILE"
+    mkdir "$PKG_DIR/$pkgname"
+    cd /
+    tar -czpf "$PKG_DIR/$pkgname/$pkgname.tar.gz" --files-from $TEMPDIR/$PKG_FILELIST
+    mv "$TEMPDIR/$PKG_FILELIST" "$PKG_DIR/$pkgname/"
+    mv "$TEMPDIR/INSTALL.log" "$PKG_DIR/$pkgname/"
+    log_msg "ACTION: Install log written to $PKG_DIR/$pkgname/INSTALL.log"
+    echo "Done."
+    echo -n "Cleaning up..."
+    cd $BTRFS_SNAPDIR
+    log_msg "ACTION: Deleting snapshot $snapshot_name."
+    $DELSNAPSHOT_CMD $snapshot_name >/dev/null 2>&1 
+    echo "Done."
+    cd $OLD_DIR
+    return $SUCCESS
+}
+
+remove() {
+    local pkgname=$1
+    local remperm=$2
+    checkexist $pkgname
+    retval=$?
+    if [ $retval -eq $ERROR ]; then
+	printerror "${ERR_VALS[$E_INVALIDPKGNAME]}"
+	return $ERROR
+    fi
+    echo -n "Are you sure you want to remove $pkgname?[y/n]: "
+    read ans
+    if [ "$ans" = "y" ]; then
+	cd "$PKG_DIR/$pkgname"
+	# 
+	# Remove files installed by this package. Remove directories
+	# also, if they are empty.
+	#
+	cat "$PKG_FILELIST" | while read filename; do
+	    filename=`echo $filename | sed -e 's/^\.//'`
+	    filename="/$filename"
+	    log_msg "ACTION: Trying to remove '$filename'"
+	    if ! rm -f "$filename"; then
+		log_msg "WARNING: Unable to remove $filename"
+	    fi
+	    basedir=`dirname $filename`
+            fcount=`ls -A $basedir | wc -l`
+	    if [ $fcount -eq 0 ]; then
+		if ! rmdir "$basedir"; then
+		    log_msg "INFO: Not removing $basedir."
+		fi
+		log_msg "ACTION: Removed empty dir $basedir."
+		echo "Removed empty dir $basedir"
+	    fi
+	done
+	if [ "x$remperm" = "x1" ]; then
+	    printwarn "WARNING: Removing $pkgname permenantly."
+	    cd "$PKG_DIR"
+	    rm -rf "$pkgname"
+	else
+	    #
+    	# Move the package to recycled dir
+	    #	    
+		printwarn "WARNING: Moving $pkgname to recycle bin."
+		cd "$PKG_DIR"
+		log_msg "ACTION: Moving $pkgname to $PKG_RECYCLE_BIN"
+		mv $pkgname $PKG_RECYCLE_BIN
+	fi
+	echo "Removing $pkgname from database."
+	TEMPFILE=`mktemp -p $TEMPDIR ${ME}$$.XXXXXX`
+	grep -v "$pkgname" "$PKG_LIST_FILE" > $TEMPFILE
+	mv $TEMPFILE $PKG_LIST_FILE
+	if [ "x$remperm" != "x1" ]; then
+		echo $pkgname >> $PKG_RECYCLE_LIST
+	fi
+    else
+	return $ERROR
+    fi
+    return $SUCCESS
+}
+
+
+main() {
+    if [ -f "$LOCKFILE" ]; then
+	echo -n "I think another instance is running with pid "
+	pid=`cat "$LOCKFILE"`
+	echo "$pid. I quit."
+	return $ERROR
+    fi
+
+    echo $$ > "$LOCKFILE"
+
+    if [ $NOOFARGS -eq 0 ]; then
+	usage
+	return
+    fi
+    validate
+    retval=$?
+    if [ $retval -ne $SUCCESS ]; then
+	echo ${ERR_VALS[$retval]}
+	quit $ERROR
+    fi
+
+    case "$action" in
+	install) doinstall $pkgname
+		checkretval $? $action
+		;;
+	list) dolist 
+		checkretval $? $action
+		;;
+	listfiles) listfiles $pkgname 
+		checkretval $? $action
+		;;
+	remove) remove $pkgname 
+		checkretval $? $action
+		;;
+	premove) remove $pkgname 1 
+		checkretval $? $action
+		;;
+    esac
+    cleanup
+}
+
+main
+quit $SUCCESS
